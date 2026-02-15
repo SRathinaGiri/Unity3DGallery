@@ -16,9 +16,14 @@ public class FractalManager : MonoBehaviour
     [Tooltip("Action for 'Previous Image' (e.g. Right Controller 'B' or Secondary Button)")]
     public InputActionReference previousAction;
 
-    private List<string> fractalFiles = new List<string>();
+    // Store loaded textures for embedded resources, file paths for external
+    private List<Texture2D> embeddedFractals = new List<Texture2D>();
+    private List<string> externalFractalFiles = new List<string>();
+
+    private int totalCount => embeddedFractals.Count + externalFractalFiles.Count;
     private int currentIndex = 0;
-    private Texture2D currentTexture;
+
+    private Texture2D currentActiveTexture; // The one currently displayed
 
     // Path on Quest local storage
     private string fractalPath = "/sdcard/Pictures/Fractals";
@@ -37,10 +42,16 @@ public class FractalManager : MonoBehaviour
 
     void Start()
     {
+        DebugText.Log("Initializing...");
+
+        // Load Embedded Resources first
+        LoadEmbeddedResources();
+
         // Request permissions on Android (Quest)
         #if UNITY_ANDROID && !UNITY_EDITOR
         if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(UnityEngine.Android.Permission.ExternalStorageRead))
         {
+            DebugText.Log("Requesting Storage Permission...");
             UnityEngine.Android.Permission.RequestUserPermission(UnityEngine.Android.Permission.ExternalStorageRead);
         }
         #endif
@@ -48,19 +59,35 @@ public class FractalManager : MonoBehaviour
         StartCoroutine(InitSequence());
     }
 
+    void LoadEmbeddedResources()
+    {
+        // Load all Texture2D objects from Resources/Fractals folder
+        Texture2D[] textures = Resources.LoadAll<Texture2D>("Fractals");
+        if (textures != null && textures.Length > 0)
+        {
+            embeddedFractals.AddRange(textures);
+            DebugText.Log($"Loaded {embeddedFractals.Count} embedded fractals.");
+        }
+        else
+        {
+            DebugText.Log("No embedded fractals found in Resources/Fractals.");
+        }
+    }
+
     IEnumerator InitSequence()
     {
-        yield return new WaitForSeconds(0.5f);
+        yield return new WaitForSeconds(1.0f); // Increased delay for permission dialog interaction
 
-        ScanForFractals();
+        ScanForExternalFractals();
 
-        if (fractalFiles.Count > 0)
+        if (totalCount > 0)
         {
             LoadFractal(currentIndex);
         }
         else
         {
-            Debug.LogWarning("No fractal images found in " + fractalPath);
+            DebugText.Log("No images found (Embedded or External).");
+            Debug.LogWarning("No fractal images found.");
         }
     }
 
@@ -93,7 +120,7 @@ public class FractalManager : MonoBehaviour
         #endif
     }
 
-    void ScanForFractals()
+    void ScanForExternalFractals()
     {
         if (Directory.Exists(fractalPath))
         {
@@ -102,67 +129,96 @@ public class FractalManager : MonoBehaviour
                 string[] jpgs = Directory.GetFiles(fractalPath, "*.jpg");
                 string[] pngs = Directory.GetFiles(fractalPath, "*.png");
 
-                fractalFiles.AddRange(jpgs);
-                fractalFiles.AddRange(pngs);
+                externalFractalFiles.AddRange(jpgs);
+                externalFractalFiles.AddRange(pngs);
 
-                Debug.Log($"Found {fractalFiles.Count} fractals in {fractalPath}");
+                DebugText.Log($"Found {externalFractalFiles.Count} external files.");
             }
             catch (System.Exception e)
             {
-                Debug.LogError($"Error scanning for fractals: {e.Message}");
+                DebugText.Log($"Error scanning external: {e.Message}");
             }
         }
         else
         {
-            Debug.LogWarning("Fractal directory not found: " + fractalPath);
+            DebugText.Log($"Dir not found: {fractalPath}");
         }
     }
 
     public void NextImage()
     {
-        if (fractalFiles.Count == 0) return;
+        if (totalCount == 0) return;
 
-        currentIndex = (currentIndex + 1) % fractalFiles.Count;
+        currentIndex = (currentIndex + 1) % totalCount;
         LoadFractal(currentIndex);
     }
 
     public void PreviousImage()
     {
-        if (fractalFiles.Count == 0) return;
+        if (totalCount == 0) return;
 
         currentIndex--;
-        if (currentIndex < 0) currentIndex = fractalFiles.Count - 1;
+        if (currentIndex < 0) currentIndex = totalCount - 1;
         LoadFractal(currentIndex);
     }
 
     void LoadFractal(int index)
     {
-        if (index < 0 || index >= fractalFiles.Count) return;
+        if (index < 0 || index >= totalCount) return;
 
-        string filePath = fractalFiles[index];
+        // Cleanup previous dynamic texture if it was loaded from file
+        // Embedded textures (Resources) are managed by Unity, don't destroy them manually unless unloading assets
+        if (currentActiveTexture != null && !embeddedFractals.Contains(currentActiveTexture))
+        {
+            Destroy(currentActiveTexture);
+        }
+
+        // Case 1: Embedded
+        if (index < embeddedFractals.Count)
+        {
+            currentActiveTexture = embeddedFractals[index];
+            DebugText.Log($"Displaying Embedded: {currentActiveTexture.name}");
+            ApplyTexture(currentActiveTexture);
+        }
+        // Case 2: External
+        else
+        {
+            int externalIndex = index - embeddedFractals.Count;
+            LoadExternalTexture(externalIndex);
+        }
+    }
+
+    void LoadExternalTexture(int index)
+    {
+        string filePath = externalFractalFiles[index];
 
         if (File.Exists(filePath))
         {
             byte[] fileData = File.ReadAllBytes(filePath);
 
-            if (currentTexture != null)
-            {
-                Destroy(currentTexture);
-            }
-
             // Create a new Texture2D with mipmaps enabled
-            currentTexture = new Texture2D(2, 2, TextureFormat.RGBA32, true);
-            currentTexture.wrapMode = TextureWrapMode.Clamp;
+            Texture2D tex = new Texture2D(2, 2, TextureFormat.RGBA32, true);
+            tex.wrapMode = TextureWrapMode.Clamp;
 
-            if (currentTexture.LoadImage(fileData))
+            if (tex.LoadImage(fileData))
             {
-                currentTexture.Apply(true, true);
-
-                if (targetRenderer != null)
-                {
-                    targetRenderer.material.mainTexture = currentTexture;
-                }
+                tex.Apply(true, true); // Upload to GPU, release CPU memory
+                currentActiveTexture = tex;
+                DebugText.Log($"Displaying External: {Path.GetFileName(filePath)}");
+                ApplyTexture(currentActiveTexture);
             }
+            else
+            {
+                DebugText.Log($"Failed to load image: {Path.GetFileName(filePath)}");
+            }
+        }
+    }
+
+    void ApplyTexture(Texture2D tex)
+    {
+        if (targetRenderer != null)
+        {
+            targetRenderer.material.mainTexture = tex;
         }
     }
 }

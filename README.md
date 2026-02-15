@@ -19,12 +19,14 @@ This project provides the necessary scripts and shaders to create a VR showcase 
     - Install **OpenXR Plugin** (and ensure it's enabled in Project Settings > XR Plug-in Management for Android).
     - Install **Input System** (agree to restart the editor if prompted).
     - Import **Meta XR Core SDK** (for OVRCameraRig and Passthrough features).
+3.  **Project Settings**:
+    - **Player > Other Settings**: Set **Write Permission** to **External (SDCard)**. This is crucial for accessing files outside the app bundle.
+    - **Resolution and Presentation**: Ensure orientation is Landscape Left.
 
 ### 2. Scene Setup (Hierarchy)
 1.  **Remove Default Camera**: Delete the `Main Camera`.
 2.  **Add OVRCameraRig**:
     - Use the `OVRCameraRig` prefab (from `Oculus/VR/Prefabs`).
-    - Note: Even with OpenXR, `OVRCameraRig` provides a convenient hierarchy for Passthrough setup.
 3.  **Enable Passthrough**:
     - Select `OVRCameraRig` > `OVRManager` component.
     - Set **Passthrough Support** to **Supported**.
@@ -40,27 +42,36 @@ This project provides the necessary scripts and shaders to create a VR showcase 
     - Create material `FractalMaterial` using shader `Custom/StereoSplit`.
     - Assign to Cylinder.
 
-### 4. Setup Scripts & Input
+### 4. Setup Scripts & Debugging
 1.  **Create GameManager**:
     - Add `FractalManager` script.
     - Assign `FractalScreen` to **Target Renderer**.
-2.  **Configure Input**:
-    - The script uses Unity's **Input System**.
-    - Create an **Input Action Asset** (Right Click > Create > Input Actions) named `VRControls`.
-    - Edit `VRControls`:
-        - Create Action Map `FractalControl`.
-        - Add Action `NextImage` -> Bind to `<XRController>{RightHand}/primaryButton` (A Button).
-        - Add Action `PreviousImage` -> Bind to `<XRController>{RightHand}/secondaryButton` (B Button).
-        - Save Asset.
-    - Select the `VRControls` asset in Project view and check **Generate C# Class** (optional) or just drag the references.
-    - **Easier Method**: Add a `PlayerInput` component to `GameManager`, assign `VRControls`, and drag the specific Actions (Next/Previous) into the `FractalManager` slots in the Inspector.
-    - *Alternatively*, you can assign default OpenXR bindings directly if you use the Input System's default asset.
+2.  **Add Debug Text**:
+    - Create a **3D Object > Text - TextMeshPro** in the scene.
+    - Name it `DebugText`.
+    - Position it at `(0, 1.5, 2.5)` so it floats in front of the screen.
+    - Add the `DebugText` script to it.
+    - Assign the `TextMeshPro` component to the `DebugText` script slot.
 
-### 5. Deployment
-- Build for Android (Quest 3).
-- Copy SBS 3D images to `/sdcard/Pictures/Fractals/`.
-- Ensure you accept the "Allow access to files" permission dialog on first launch.
+### 5. Adding Images (Gallery Mode)
+You have two options for adding images:
+
+**Option A: Embedded (Built-in)**
+- Place your `.jpg` or `.png` textures into the folder: `Assets/Resources/Fractals/`.
+- Unity will build these into the app. They will work immediately without permissions.
+
+**Option B: External (User Content)**
+- Build and run the app.
+- Copy SBS 3D images to `/sdcard/Pictures/Fractals/` on the Quest.
+- On first launch, accept the "Allow access to files" permission dialog.
+
+### 6. Configure Input
+- Create an **Input Action Asset** (Right Click > Create > Input Actions) named `VRControls`.
+- Add Action `NextImage` -> Bind to `<XRController>{RightHand}/primaryButton` (A Button).
+- Add Action `PreviousImage` -> Bind to `<XRController>{RightHand}/secondaryButton` (B Button).
+- Assign these Actions to the `FractalManager` component in the Inspector.
 
 ## Troubleshooting
-- **No Input?**: Ensure the Input System package is active and the correct Action References are assigned in the Inspector.
-- **Black Screen?**: Check Passthrough settings and alpha channel.
+- **White Screen**: Means no images are loaded. Check the **DebugText** in the scene for errors.
+- **Permission Denied**: Ensure Player Settings > Write Permission is set to **External (SDCard)**.
+- **No Input**: Ensure Input System package is installed and Actions are assigned.
