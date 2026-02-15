@@ -17,6 +17,22 @@ public class FractalManager : MonoBehaviour
 
     void Start()
     {
+        // Request permissions on Android (Quest)
+        #if UNITY_ANDROID && !UNITY_EDITOR
+        if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(UnityEngine.Android.Permission.ExternalStorageRead))
+        {
+            UnityEngine.Android.Permission.RequestUserPermission(UnityEngine.Android.Permission.ExternalStorageRead);
+        }
+        #endif
+
+        // Give a small delay for permissions to propagate or file system to be ready
+        StartCoroutine(InitSequence());
+    }
+
+    IEnumerator InitSequence()
+    {
+        yield return new WaitForSeconds(0.5f);
+
         ScanForFractals();
 
         if (fractalFiles.Count > 0)
