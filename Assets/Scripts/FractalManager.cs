@@ -1,12 +1,20 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem; // Requires Input System package
 using System.IO;
 
 public class FractalManager : MonoBehaviour
 {
+    [Header("Rendering")]
     [Tooltip("Assign the GameObject with the Renderer using the StereoSplit shader.")]
     public Renderer targetRenderer;
+
+    [Header("Input Actions")]
+    [Tooltip("Action for 'Next Image' (e.g. Right Controller 'A' or Primary Button)")]
+    public InputActionReference nextAction;
+    [Tooltip("Action for 'Previous Image' (e.g. Right Controller 'B' or Secondary Button)")]
+    public InputActionReference previousAction;
 
     private List<string> fractalFiles = new List<string>();
     private int currentIndex = 0;
@@ -14,6 +22,18 @@ public class FractalManager : MonoBehaviour
 
     // Path on Quest local storage
     private string fractalPath = "/sdcard/Pictures/Fractals";
+
+    void OnEnable()
+    {
+        if (nextAction != null) nextAction.action.Enable();
+        if (previousAction != null) previousAction.action.Enable();
+    }
+
+    void OnDisable()
+    {
+        if (nextAction != null) nextAction.action.Disable();
+        if (previousAction != null) previousAction.action.Disable();
+    }
 
     void Start()
     {
@@ -25,7 +45,6 @@ public class FractalManager : MonoBehaviour
         }
         #endif
 
-        // Give a small delay for permissions to propagate or file system to be ready
         StartCoroutine(InitSequence());
     }
 
@@ -47,37 +66,35 @@ public class FractalManager : MonoBehaviour
 
     void Update()
     {
-        // Handle Input
-        // A Button (Next)
-        if (OVRInput.GetDown(OVRInput.Button.One, OVRInput.Controller.RTouch))
+        // Check Input Actions
+        if (nextAction != null && nextAction.action.WasPerformedThisFrame())
         {
             NextImage();
         }
 
-        // B Button (Previous)
-        if (OVRInput.GetDown(OVRInput.Button.Two, OVRInput.Controller.RTouch))
+        if (previousAction != null && previousAction.action.WasPerformedThisFrame())
         {
             PreviousImage();
         }
 
-        // Keyboard Fallback for Editor testing
+        // Keyboard Fallback for Editor testing (using Input System directly if configured, or legacy if both enabled)
         #if UNITY_EDITOR
-        if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.A))
+        if (Keyboard.current != null)
         {
-            NextImage();
-        }
-        if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.B))
-        {
-            PreviousImage();
+            if (Keyboard.current.rightArrowKey.wasPressedThisFrame || Keyboard.current.aKey.wasPressedThisFrame)
+            {
+                NextImage();
+            }
+            if (Keyboard.current.leftArrowKey.wasPressedThisFrame || Keyboard.current.bKey.wasPressedThisFrame)
+            {
+                PreviousImage();
+            }
         }
         #endif
     }
 
     void ScanForFractals()
     {
-        // In Editor, we can't easily access /sdcard unless we simulate it or use a different path.
-        // But for the build, we use the specified path.
-
         if (Directory.Exists(fractalPath))
         {
             try
@@ -128,21 +145,17 @@ public class FractalManager : MonoBehaviour
         {
             byte[] fileData = File.ReadAllBytes(filePath);
 
-            // Clean up previous texture to free memory
             if (currentTexture != null)
             {
                 Destroy(currentTexture);
             }
 
-            // Create a new Texture2D.
-            // We enable mipmaps (last parameter true) for better visual quality at distance/angles.
+            // Create a new Texture2D with mipmaps enabled
             currentTexture = new Texture2D(2, 2, TextureFormat.RGBA32, true);
             currentTexture.wrapMode = TextureWrapMode.Clamp;
 
-            // LoadImage resizes the texture to match the image data.
             if (currentTexture.LoadImage(fileData))
             {
-                // Apply(true, true) generates mipmaps and makes the texture non-readable to save memory.
                 currentTexture.Apply(true, true);
 
                 if (targetRenderer != null)
